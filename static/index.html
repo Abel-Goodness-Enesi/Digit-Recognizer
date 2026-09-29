@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Digit Recognizer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,400;6..72,500;6..72,600&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #EDEFF2;
+    --panel: #FFFFFF;
+    --rule: #D5D9E0;
+    --rule-blue: #2A5DA8;
+    --ink: #1A2233;
+    --ink-dim: #5B6472;
+    --pen: #C1432E;
+    --pen-bg: #FBEAE6;
+    --confirm: #2A5DA8;
+    --confirm-bg: #E7EEF9;
+    --review: #9A6B00;
+    --review-bg: #FBF1DB;
+    box-sizing: border-box;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: 'Newsreader', serif;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .mono { font-family: 'Space Mono', monospace; }
+  .wrap { max-width: 640px; margin: 0 auto; padding: 0 20px; }
+
+  header { padding: 52px 0 28px; }
+  h1 {
+    font-family: 'Newsreader', serif;
+    font-weight: 600;
+    font-size: clamp(30px, 6vw, 40px);
+    margin: 0 0 12px;
+    letter-spacing: -0.01em;
+  }
+  header p {
+    color: var(--ink-dim);
+    max-width: 54ch;
+    font-size: 16.5px;
+    margin: 0;
+  }
+
+  /* ---- tabs ---- */
+  .tabs {
+    display: flex;
+    gap: 2px;
+    margin: 30px 0 0;
+  }
+  .tab {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-bottom: none;
+    color: var(--ink-dim);
+    padding: 10px 18px;
+    cursor: pointer;
+    border-radius: 4px 4px 0 0;
+  }
+  .tab.active { color: var(--ink); background: var(--panel); font-weight: 700; }
+  .tab:focus-visible { outline: 2px solid var(--rule-blue); outline-offset: -2px; }
+
+  /* ---- ruled paper panel ---- */
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    padding: 0;
+    position: relative;
+  }
+  .panel-inner { padding: 28px 24px 24px; }
+
+  .paper-surface {
+    position: relative;
+    background-image:
+      linear-gradient(var(--rule) 1px, transparent 1px);
+    background-size: 100% 28px;
+    background-position: 0 6px;
+    border: 1px solid var(--rule);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+  .paper-surface::before {
+    content: "";
+    position: absolute;
+    left: 38px; top: 0; bottom: 0;
+    width: 1.5px;
+    background: var(--pen);
+    opacity: 0.55;
+  }
+
+  #drawCanvas {
+    display: block;
+    width: 100%;
+    height: 280px;
+    touch-action: none;
+    cursor: crosshair;
+  }
+
+  .upload-zone, .camera-zone {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 280px;
+    color: var(--ink-dim);
+    font-size: 14px;
+    text-align: center;
+    padding: 20px;
+  }
+  .upload-zone.active, .camera-zone.active { display: flex; }
+  #drawCanvas.hidden { display: none; }
+
+  .upload-zone input[type="file"] { display: none; }
+  .upload-label {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    border: 1px solid var(--rule-blue);
+    color: var(--rule-blue);
+    padding: 9px 18px;
+    cursor: pointer;
+    margin-top: 10px;
+  }
+  .upload-label:hover { background: var(--confirm-bg); }
+  #uploadPreview { max-width: 100%; max-height: 220px; display: none; }
+
+  #video, #captureCanvas { max-width: 100%; }
+  #captureCanvas.hidden, #video.hidden { display: none; }
+  .camera-controls { display: flex; gap: 10px; margin-top: 12px; }
+
+  .panel-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 14px 24px;
+    border-top: 1px solid var(--rule);
+  }
+  button.action {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    background: transparent;
+    border: 1px solid var(--rule);
+    color: var(--ink-dim);
+    padding: 8px 14px;
+    cursor: pointer;
+  }
+  button.action:hover { border-color: var(--ink-dim); }
+  button.action:focus-visible { outline: 2px solid var(--rule-blue); outline-offset: 2px; }
+
+  button.predict {
+    font-family: 'Space Mono', monospace;
+    font-size: 14px;
+    font-weight: 700;
+    background: var(--ink);
+    color: var(--panel);
+    border: none;
+    padding: 11px 24px;
+    cursor: pointer;
+    letter-spacing: 0.02em;
+  }
+  button.predict:hover { background: var(--rule-blue); }
+  button.predict:disabled { background: var(--rule); color: var(--ink-dim); cursor: not-allowed; }
+  button.predict:focus-visible { outline: 2px solid var(--pen); outline-offset: 2px; }
+
+  /* ---- result ---- */
+  .result {
+    margin-top: 32px;
+    display: none;
+  }
+  .result.visible { display: block; }
+
+  .grade-row {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+  }
+  .grade-circle {
+    position: relative;
+    width: 84px; height: 84px;
+    flex-shrink: 0;
+  }
+  .grade-circle svg { width: 100%; height: 100%; }
+  .grade-circle .digit {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Newsreader', serif;
+    font-weight: 600;
+    font-size: 40px;
+    color: var(--pen);
+  }
+  .grade-meta { flex: 1; }
+  .stamp {
+    display: inline-block;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+    padding: 5px 11px;
+    border: 1.5px solid var(--confirm);
+    color: var(--confirm);
+    background: var(--confirm-bg);
+    transform: rotate(-2deg);
+    margin-bottom: 8px;
+  }
+  .stamp.review {
+    border-color: var(--review);
+    color: var(--review);
+    background: var(--review-bg);
+  }
+  .confidence-line {
+    font-family: 'Space Mono', monospace;
+    font-size: 13px;
+    color: var(--ink-dim);
+  }
+  .confidence-line b { color: var(--ink); }
+
+  .prob-list {
+    margin-top: 22px;
+    display: grid;
+    gap: 6px;
+  }
+  .prob-row {
+    display: grid;
+    grid-template-columns: 20px 1fr 44px;
+    align-items: center;
+    gap: 10px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-dim);
+  }
+  .prob-row.top { color: var(--ink); font-weight: 700; }
+  .prob-track {
+    height: 6px;
+    background: var(--paper);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .prob-fill {
+    height: 100%;
+    background: var(--rule-blue);
+    border-radius: 3px;
+  }
+  .prob-row.top .prob-fill { background: var(--pen); }
+
+  .status-line {
+    margin-top: 14px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12.5px;
+    color: var(--ink-dim);
+    min-height: 18px;
+  }
+  .status-line.error { color: var(--pen); }
+
+  footer {
+    padding: 48px 0 72px;
+    border-top: 1px solid var(--rule);
+    margin-top: 56px;
+    font-family: 'Space Mono', monospace;
+    font-size: 12.5px;
+    color: var(--ink-dim);
+  }
+
+  ::selection { background: var(--confirm-bg); }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header>
+    <h1>Read the digit.</h1>
+    <p>A small neural network — trained on 48,000 handwritten digits, tested honestly on 10,000 more — reads what you draw, upload, or hold up to the camera. Below 90% confidence, it says so instead of guessing.</p>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-tab="draw" role="tab" aria-selected="true">Draw</button>
+    <button class="tab" data-tab="upload" role="tab" aria-selected="false">Upload</button>
+    <button class="tab" data-tab="camera" role="tab" aria-selected="false">Camera</button>
+  </div>
+
+  <div class="panel">
+    <div class="panel-inner">
+      <div class="paper-surface">
+        <canvas id="drawCanvas"></canvas>
+
+        <div class="upload-zone" id="uploadZone">
+          <img id="uploadPreview" alt="">
+          <p id="uploadHint">A photo of a single handwritten digit works best — clear, well-lit, one digit only.</p>
+          <label class="upload-label" for="fileInput">Choose image</label>
+          <input type="file" id="fileInput" accept="image/*">
+        </div>
+
+        <div class="camera-zone" id="cameraZone">
+          <video id="video" autoplay playsinline class="hidden"></video>
+          <canvas id="captureCanvas" class="hidden"></canvas>
+          <p id="cameraHint">Hold a handwritten digit up to the camera, centered and well-lit.</p>
+          <div class="camera-controls">
+            <button class="action" id="startCameraBtn" type="button">Start camera</button>
+            <button class="action" id="captureBtn" type="button" style="display:none;">Capture</button>
+            <button class="action" id="retakeBtn" type="button" style="display:none;">Retake</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="panel-controls">
+      <button class="action" id="clearBtn" type="button">Clear</button>
+      <button class="predict" id="predictBtn" type="button" disabled>Predict</button>
+    </div>
+  </div>
+
+  <div class="status-line" id="statusLine"></div>
+
+  <div class="result" id="result">
+    <div class="grade-row">
+      <div class="grade-circle">
+        <svg viewBox="0 0 84 84">
+          <circle cx="42" cy="42" r="36" fill="none" stroke="#C1432E" stroke-width="3" opacity="0.85"/>
+        </svg>
+        <div class="digit" id="resultDigit">&mdash;</div>
+      </div>
+      <div class="grade-meta">
+        <div class="stamp" id="resultStamp">clear read</div>
+        <div class="confidence-line">confidence: <b id="resultConfidence">&mdash;</b></div>
+      </div>
+    </div>
+    <div class="prob-list" id="probList"></div>
+  </div>
+
+  <footer>
+    dense network, 64&ndash;32&ndash;16&ndash;10, trained on MNIST &middot; 97.0% test accuracy &middot; review threshold at 90% confidence &middot; runs entirely on the server, nothing cached client-side
+  </footer>
+</div>
+
+<script>
+const drawCanvas = document.getElementById('drawCanvas');
+const dctx = drawCanvas.getContext('2d');
+const predictBtn = document.getElementById('predictBtn');
+const clearBtn = document.getElementById('clearBtn');
+const statusLine = document.getElementById('statusLine');
+const resultEl = document.getElementById('result');
+const uploadZone = document.getElementById('uploadZone');
+const cameraZone = document.getElementById('cameraZone');
+const fileInput = document.getElementById('fileInput');
+const uploadPreview = document.getElementById('uploadPreview');
+const video = document.getElementById('video');
+const captureCanvas = document.getElementById('captureCanvas');
+const startCameraBtn = document.getElementById('startCameraBtn');
+const captureBtn = document.getElementById('captureBtn');
+const retakeBtn = document.getElementById('retakeBtn');
+
+let activeTab = 'draw';
+let uploadedBlob = null;
+let cameraStream = null;
+let capturedFromCamera = false;
+
+/* ---- canvas sizing (retina-aware) ---- */
+function sizeDrawCanvas() {
+  const rect = drawCanvas.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  drawCanvas.width = rect.width * dpr;
+  drawCanvas.height = rect.height * dpr;
+  dctx.scale(dpr, dpr);
+  dctx.fillStyle = '#000';
+  dctx.fillRect(0, 0, rect.width, rect.height);
+  dctx.lineWidth = 14;
+  dctx.lineCap = 'round';
+  dctx.lineJoin = 'round';
+  dctx.strokeStyle = '#fff';
+}
+window.addEventListener('resize', () => { if (activeTab === 'draw') sizeDrawCanvas(); });
+sizeDrawCanvas();
+
+/* ---- drawing ---- */
+let drawing = false;
+let lastX = 0, lastY = 0;
+let hasDrawn = false;
+
+function getPos(e) {
+  const rect = drawCanvas.getBoundingClientRect();
+  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+  const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+  return { x: clientX - rect.left, y: clientY - rect.top };
+}
+function startDraw(e) {
+  e.preventDefault();
+  drawing = true;
+  const p = getPos(e);
+  lastX = p.x; lastY = p.y;
+  hasDrawn = true;
+  updatePredictEnabled();
+}
+function moveDraw(e) {
+  if (!drawing) return;
+  e.preventDefault();
+  const p = getPos(e);
+  dctx.beginPath();
+  dctx.moveTo(lastX, lastY);
+  dctx.lineTo(p.x, p.y);
+  dctx.stroke();
+  lastX = p.x; lastY = p.y;
+}
+function endDraw() { drawing = false; }
+
+drawCanvas.addEventListener('mousedown', startDraw);
+drawCanvas.addEventListener('mousemove', moveDraw);
+window.addEventListener('mouseup', endDraw);
+drawCanvas.addEventListener('touchstart', startDraw, { passive: false });
+drawCanvas.addEventListener('touchmove', moveDraw, { passive: false });
+window.addEventListener('touchend', endDraw);
+
+/* ---- tabs ---- */
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => { t.classList.remove('active'); t.setAttribute('aria-selected','false'); });
+    tab.classList.add('active'); tab.setAttribute('aria-selected','true');
+    activeTab = tab.dataset.tab;
+
+    drawCanvas.classList.toggle('hidden', activeTab !== 'draw');
+    uploadZone.classList.toggle('active', activeTab === 'upload');
+    cameraZone.classList.toggle('active', activeTab === 'camera');
+
+    if (activeTab === 'draw') sizeDrawCanvas(), hasDrawn = false;
+    if (activeTab !== 'camera') stopCamera();
+    resetResult();
+    updatePredictEnabled();
+  });
+});
+
+/* ---- upload ---- */
+fileInput.addEventListener('change', () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+  uploadedBlob = file;
+  const url = URL.createObjectURL(file);
+  uploadPreview.src = url;
+  uploadPreview.style.display = 'block';
+  document.getElementById('uploadHint').style.display = 'none';
+  resetResult();
+  updatePredictEnabled();
+});
+
+/* ---- camera ---- */
+startCameraBtn.addEventListener('click', async () => {
+  try {
+    cameraStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    video.srcObject = cameraStream;
+    video.classList.remove('hidden');
+    startCameraBtn.style.display = 'none';
+    captureBtn.style.display = 'inline-block';
+    document.getElementById('cameraHint').style.display = 'none';
+  } catch (err) {
+    statusLine.textContent = 'Could not access camera: ' + err.message;
+    statusLine.classList.add('error');
+  }
+});
+captureBtn.addEventListener('click', () => {
+  const w = video.videoWidth, h = video.videoHeight;
+  captureCanvas.width = w; captureCanvas.height = h;
+  const cctx = captureCanvas.getContext('2d');
+  cctx.drawImage(video, 0, 0, w, h);
+  captureCanvas.classList.remove('hidden');
+  video.classList.add('hidden');
+  captureBtn.style.display = 'none';
+  retakeBtn.style.display = 'inline-block';
+  capturedFromCamera = true;
+  resetResult();
+  updatePredictEnabled();
+});
+retakeBtn.addEventListener('click', () => {
+  captureCanvas.classList.add('hidden');
+  video.classList.remove('hidden');
+  captureBtn.style.display = 'inline-block';
+  retakeBtn.style.display = 'none';
+  capturedFromCamera = false;
+  resetResult();
+  updatePredictEnabled();
+});
+function stopCamera() {
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(t => t.stop());
+    cameraStream = null;
+  }
+  video.classList.add('hidden');
+  captureCanvas.classList.add('hidden');
+  startCameraBtn.style.display = 'inline-block';
+  captureBtn.style.display = 'none';
+  retakeBtn.style.display = 'none';
+  capturedFromCamera = false;
+  document.getElementById('cameraHint').style.display = 'block';
+}
+
+/* ---- clear ---- */
+clearBtn.addEventListener('click', () => {
+  if (activeTab === 'draw') { sizeDrawCanvas(); hasDrawn = false; }
+  if (activeTab === 'upload') {
+    uploadedBlob = null; fileInput.value = '';
+    uploadPreview.style.display = 'none';
+    document.getElementById('uploadHint').style.display = 'block';
+  }
+  if (activeTab === 'camera') { retakeBtn.click(); }
+  resetResult();
+  updatePredictEnabled();
+});
+
+function updatePredictEnabled() {
+  let ready = false;
+  if (activeTab === 'draw') ready = hasDrawn;
+  if (activeTab === 'upload') ready = !!uploadedBlob;
+  if (activeTab === 'camera') ready = capturedFromCamera;
+  predictBtn.disabled = !ready;
+}
+
+function resetResult() {
+  resultEl.classList.remove('visible');
+  statusLine.textContent = '';
+  statusLine.classList.remove('error');
+}
+
+/* ---- predict ---- */
+predictBtn.addEventListener('click', async () => {
+  let blob;
+  if (activeTab === 'draw') {
+    blob = await new Promise(res => drawCanvas.toBlob(res, 'image/png'));
+  } else if (activeTab === 'upload') {
+    blob = uploadedBlob;
+  } else if (activeTab === 'camera') {
+    blob = await new Promise(res => captureCanvas.toBlob(res, 'image/png'));
+  }
+  if (!blob) return;
+
+  predictBtn.disabled = true;
+  statusLine.textContent = 'reading\u2026';
+  statusLine.classList.remove('error');
+
+  const formData = new FormData();
+  formData.append('file', blob, 'input.png');
+
+  try {
+    const resp = await fetch('/predict', { method: 'POST', body: formData });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || ('server error ' + resp.status));
+    }
+    const data = await resp.json();
+    renderResult(data);
+    statusLine.textContent = '';
+  } catch (err) {
+    statusLine.textContent = 'could not read that image \u2014 ' + err.message;
+    statusLine.classList.add('error');
+  } finally {
+    predictBtn.disabled = false;
+  }
+});
+
+function renderResult(data) {
+  document.getElementById('resultDigit').textContent = data.digit;
+  const pct = Math.round(data.confidence * 100);
+  document.getElementById('resultConfidence').textContent = pct + '%';
+
+  const stamp = document.getElementById('resultStamp');
+  if (data.needs_review) {
+    stamp.textContent = 'needs review';
+    stamp.classList.add('review');
+  } else {
+    stamp.textContent = 'clear read';
+    stamp.classList.remove('review');
+  }
+
+  const probList = document.getElementById('probList');
+  const probs = data.probabilities;
+  const maxIdx = data.digit;
+  probList.innerHTML = probs.map((p, i) => `
+    <div class="prob-row ${i === maxIdx ? 'top' : ''}">
+      <span>${i}</span>
+      <span class="prob-track"><span class="prob-fill" style="width:${Math.round(p*100)}%"></span></span>
+      <span>${Math.round(p*100)}%</span>
+    </div>
+  `).join('');
+
+  resultEl.classList.add('visible');
+}
+</script>
+</body>
+</html>
